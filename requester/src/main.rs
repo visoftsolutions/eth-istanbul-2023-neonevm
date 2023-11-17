@@ -10,6 +10,17 @@ mod value_incrementer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_timer(tracing_subscriber::fmt::time::uptime())
+        .with_level(true)
+        .with_thread_ids(true)
+        .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)?;
+
     let neonevm_url = env::var("NEONEVM_URL")?;
     let contract_address = env::var("CONTRACT_ADDRESS")?;
     let contract_address = Address::from_slice(&hex::decode(contract_address)?);
@@ -20,9 +31,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|key| key.parse::<LocalWallet>())
         .collect::<Result<Vec<_>, _>>()?;
 
-    let provider = Provider::<Http>::try_from(neonevm_url)?;
+    tokio::task::spawn(mint(accounts.as_slice().to_owned()));
 
-    println!("{:?}", accounts[0].address());
+    let provider = Provider::<Http>::try_from(neonevm_url)?;
 
     let tasks = accounts.into_iter().enumerate().map(|(id, a)| {
         handle(
@@ -32,9 +43,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             contract_address.clone(),
         )
     });
+
     join_all(tasks).await;
 
     Ok(())
+}
+
+async fn mint(accounts: Vec<LocalWallet>) {
+    loop {
+        for account in accounts.iter() {
+            let address = hex::encode(account.address().as_bytes());
+            mint::send_request(address.clone()).await;
+            tokio::time::sleep(Duration::from_secs(65)).await;
+        }
+    }
 }
 
 async fn handle(
@@ -54,27 +76,17 @@ async fn handle(
             Ok(tx) => {
                 match tx.await {
                     Ok(_) => {
-                        println!("OK {} {} {}", id, account.address(), i);
+                        tracing::info!("HANDLE OK {} {} {}", id, account.address(), i);
                     }
                     Err(err) => {
-                        println!("ERROR: {} {:?}", id, err);
-                        let mint_result =
-                            mint::send_request(hex::encode(account.address().as_bytes())).await;
-                        println!("MINT RESULT: {} {:?}", id, mint_result);
-                        if let Err(_) = mint_result {
-                            sleep(Duration::from_secs(rng.gen_range(60..=600))).await;
-                        }
+                        tracing::error!("HANDLE ERROR: {} {:?}", id, err);
+                        sleep(Duration::from_secs(rng.gen_range(70..=600))).await;
                     }
                 };
             }
             Err(err) => {
-                println!("ERROR: {} {:?}", id, err);
-                let mint_result =
-                    mint::send_request(hex::encode(account.address().as_bytes())).await;
-                println!("MINT RESULT: {} {:?}", id, mint_result);
-                if let Err(_) = mint_result {
-                    sleep(Duration::from_secs(rng.gen_range(60..=600))).await;
-                }
+                tracing::error!("HANDLE ERROR: {} {:?}", id, err);
+                sleep(Duration::from_secs(rng.gen_range(70..=600))).await;
             }
         };
         i += 1;
