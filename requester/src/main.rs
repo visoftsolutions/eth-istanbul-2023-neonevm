@@ -1,7 +1,9 @@
 use ethers::core::types::Address;
 use ethers::prelude::*;
 use futures::future::join_all;
-use rand::Rng;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use rand::{seq::SliceRandom, Rng};
 use std::env;
 use tokio::time::{sleep, Duration};
 
@@ -31,7 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|key| key.parse::<LocalWallet>())
         .collect::<Result<Vec<_>, _>>()?;
 
-    tokio::task::spawn(mint(accounts.as_slice().to_owned()));
+    let rng = StdRng::from_entropy();
+    tokio::task::spawn(mint(accounts.as_slice().to_owned(), rng));
 
     let provider = Provider::<Http>::try_from(neonevm_url)?;
 
@@ -49,13 +52,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn mint(accounts: Vec<LocalWallet>) {
+async fn mint(accounts: Vec<LocalWallet>, mut rng: StdRng) {
     loop {
-        for account in accounts.iter() {
-            let address = hex::encode(account.address().as_bytes());
-            mint::send_request(address.clone()).await;
-            tokio::time::sleep(Duration::from_secs(65)).await;
-        }
+        let account = accounts.choose(&mut rng).unwrap();
+        let address = hex::encode(account.address().as_bytes());
+        mint::send_request(address.clone()).await;
+        tokio::time::sleep(Duration::from_secs(65)).await;
     }
 }
 
