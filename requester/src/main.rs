@@ -77,8 +77,11 @@ async fn handle(
         match pending_tx {
             Ok(tx) => {
                 match tx.await {
-                    Ok(_) => {
-                        tracing::info!("HANDLE OK {} {} {}", id, account.address(), i);
+                    Ok(info) => {
+                        if let Some(data) = info {
+                            tracing::info!("TX HASH: {:#?}", data.transaction_hash);
+                        }
+                        tracing::info!("HANDLE OK {} {:#?} {}", id, account.address(), i);
                     }
                     Err(err) => {
                         tracing::error!("HANDLE ERROR: {} {:?}", id, err);
