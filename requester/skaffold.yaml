@@ -11,4 +11,4 @@ build:
 manifests:
   kustomize:
     paths:
-      - ./k8s/resources
+      - ./k8s
